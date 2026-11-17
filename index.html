@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en" data-atlas="engine">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0f14">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="canonical" href="https://samplesize1.com/tools/engine-atlas/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Engine Atlas">
+<meta property="og:description" content="Learn the parts of a car engine on a 3D model you can take apart: block, crankshaft, pistons, valves, camshafts, timing chain, fuel, ignition, oil and cooling. Watch the four-stroke cycle run in slow motion, then study, practice and test yourself. Free, by SampleSize_1.">
+<meta property="og:url" content="https://samplesize1.com/tools/engine-atlas/">
+<meta property="og:image" content="https://samplesize1.com/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<title>Engine Atlas</title>
+<meta name="description" content="Learn the parts of a car engine on a 3D model you can take apart: block, crankshaft, pistons, valves, camshafts, timing chain, fuel, ignition, oil and cooling. Watch the four-stroke cycle run in slow motion, then study, practice and test yourself. Free, by SampleSize_1.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap">
+<link rel="stylesheet" href="./atlas-engine/atlas.css">
+<!-- Languages for the tools on this site (picking one, the menu, saving the choice) -->
+<script src="language.js"></script>
+<style>
+/* What only the Engine Atlas has (the rest of its look is ./atlas-engine/atlas.css) */
+/* take-apart slider */
+.vc-sec h4 kbd { font-family: var(--f-mono); font-size: 10.5px; font-weight: 500; color: var(--muted); border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 4px; margin-left: 5px; }
+#explodeRange { width: 100%; margin: 3px 0 0; accent-color: var(--scan); cursor: pointer; }
+/* the engine running: a label over each cylinder saying which stroke it is on */
+#strokes { position: fixed; inset: 0; pointer-events: none; }
+.stroke {
+  position: absolute; left: 0; top: 0; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+  background: var(--panel); border: 1px solid var(--line-strong); border-radius: 999px; padding: 3px 10px 3px 4px;
+  font-size: 12.5px; font-weight: 650; color: var(--fg);
+}
+.stroke b { font-family: var(--f-mono); font-weight: 600; font-size: 11px; color: var(--bg); background: var(--bone); border-radius: 50%; width: 18px; height: 18px; display: grid; place-items: center; }
+.stroke i { width: 9px; height: 9px; border-radius: 50%; background: var(--scan); }
+.stroke[data-stroke="power"] { border-color: #ffa13d; }
+body.clean #strokes { display: block; }
+/* shorter laptop screens: the View card has more in it here */
+@media (min-width: 901px) and (max-height: 940px) { .viewcard { gap: 6px; padding-block: 8px 9px; } }
+@media (max-width: 900px) {
+  .stroke { font-size: 11.5px; padding: 2px 8px 2px 3px; gap: 4px; }
+  .stroke b { width: 16px; height: 16px; }
+}
+</style>
+<link rel="modulepreload" href="./atlas-engine/atlas.js">
+<link rel="modulepreload" href="machine.js">
+<link rel="modulepreload" href="./atlas-engine/three-bundle.js">
+<link rel="modulepreload" href="data.js">
+
+<!-- Visible text is English here and is replaced with the chosen language at start-up. data-i18n="key" sets the text,
+     data-i18n-title / -aria / -ph set the tooltip, aria-label and placeholder. The strings live in build/ui_text.py. -->
+<div id="stage"><canvas id="c" tabindex="0" aria-label="3D car engine. Drag to rotate, scroll or pinch to zoom, click a part to select it." data-i18n-aria="canvas_aria"></canvas></div>
+<svg id="leader" aria-hidden="true"><line id="leaderLine" x1="0" y1="0" x2="0" y2="0"></line><circle id="leaderDot" r="3.5" cx="0" cy="0"></circle></svg>
+<div class="callout" id="callout" hidden></div>
+<div id="strokes" aria-hidden="true" hidden></div>
+
+<div class="ui">
+  <div class="brand">
+    <div class="lockup">
+      <!-- the SampleSize_1 logo (the [1] mark), drawn in this tool's blue; links back to the main site -->
+      <a class="home" id="homeLink" href="https://samplesize1.com/" aria-label="SampleSize_1 home page" data-i18n-aria="home_aria">
+        <svg class="logo-mark" viewBox="516 555 968 888" fill="currentColor" aria-hidden="true" focusable="false">
+          <path d="M516 555H772V670H663V1328H772V1443H516Z"></path>
+          <path d="M1484 555H1227V670H1335V1328H1227V1443H1484Z"></path>
+          <path d="M864 733L1092 698V1320H964V823L864 840Z"></path>
+        </svg>
+      </a>
+      <div class="mark" id="toolName">ENGINE <span>ATLAS</span> <i class="beta" title="Still being tested: tell me what breaks">Beta</i></div>
+    </div>
+  </div>
+
+  <div class="prompt" id="prompt" aria-live="polite">
+    <div class="eyebrow" id="pEyebrow" data-i18n="loading_eyebrow">Loading</div>
+    <div class="pname" id="pName" data-i18n="loading_name">Engine</div>
+    <!-- Name it questions: the answer is typed here, in the name's place -->
+    <form class="answer" id="answer" hidden>
+      <div class="answer-line" id="answerLine">
+        <div class="slots" id="answerSlots" aria-hidden="true"></div>
+        <input id="answerBox" type="text" aria-label="Your answer" data-i18n-aria="answer_aria" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go">
+      </div>
+      <button class="btn answer-help" id="answerHelp" type="button" data-i18n="clue">Clue</button>
+    </form>
+    <div class="pmeta" id="pMeta">&nbsp;</div>
+    <div class="ptip" id="pTip" hidden></div>
+    <div class="pbar" id="pBarWrap"><i id="pBar"></i></div>
+    <div class="review" id="review" hidden>
+      <div class="legend">
+        <span class="key ok"><i></i><b id="rOk">0</b> <span id="rOkLabel">correct</span></span>
+        <span class="key bad"><i></i><b id="rBad">0</b> <span id="rBadLabel">missed</span></span>
+      </div>
+      <p class="rhint" data-i18n="review_hint">Click any part to see its name.</p>
+      <div class="row ractions">
+        <button class="btn primary" id="rAgain" type="button" data-i18n="go_again">Go again</button>
+        <button class="btn" id="rPractice" type="button" data-i18n="practise_misses">Practise the misses</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats" id="stats">
+    <div class="stat"><small data-i18n="stat_acc">Accuracy</small><b id="sAcc">–</b></div>
+    <div class="stat"><small data-i18n="stat_time">Time</small><b id="sTime">0:00</b></div>
+    <div class="stat"><small data-i18n="stat_streak">Streak</small><b id="sStreak">0</b></div>
+  </div>
+
+  <div class="leftcol">
+    <nav class="rail" id="rail" aria-label="Engine systems" data-i18n-aria="rail_aria"></nav>
+
+    <!-- One place for everything that changes the viewpoint. Always open on desktop so the 1–0 keys are visible;
+         on phones it is a sheet opened from the View button. -->
+    <section class="viewcard" id="viewCard" aria-label="View" data-i18n-aria="view">
+      <div class="vc-head">
+        <h3 data-i18n="view">View</h3>
+        <div class="vc-head-actions">
+          <button class="voice-btn" id="voiceBtn" type="button" aria-pressed="false" title="Voice commands (V). Say a system or a view, like “cooling”, “take it apart” or “whole engine”." data-i18n-title="voice_title"><i></i><span data-i18n="voice">Voice</span></button>
+          <button class="btn close-sheet" id="closeView" type="button" data-i18n="done">Done</button>
+        </div>
+      </div>
+      <p class="voice-heard" id="voiceHeard" aria-live="polite" hidden></p>
+      <div class="vc-sec">
+        <h4 data-i18n="zoom_to">Zoom to</h4>
+        <div class="zp-grid" id="zoomGrid"></div>
+      </div>
+      <div class="vc-sec">
+        <h4><span data-i18n="explode">Take apart</span><kbd>[</kbd><kbd>]</kbd></h4>
+        <div class="zp-grid" id="explodeGrid">
+          <button class="zchip" type="button" data-v="0" data-i18n="ex_0" data-i18n-title="ex_0_title">Assembled</button>
+          <button class="zchip" type="button" data-v="1" data-i18n="ex_1" data-i18n-title="ex_1_title">Covers off</button>
+          <button class="zchip" type="button" data-v="2" data-i18n="ex_2" data-i18n-title="ex_2_title">Head off</button>
+          <button class="zchip" type="button" data-v="3" data-i18n="ex_3" data-i18n-title="ex_3_title">All apart</button>
+        </div>
+        <input type="range" id="explodeRange" min="0" max="3" step="0.01" value="0" aria-label="How far apart the engine is" data-i18n-aria="explode_aria">
+      </div>
+      <div class="vc-sec">
+        <h4 data-i18n="look_from">Look from</h4>
+        <div class="views">
+          <button class="btn" type="button" data-view="front" data-i18n="look_front" data-i18n-title="look_front_title">Front</button>
+          <button class="btn" type="button" data-view="intake" data-i18n="look_intake" data-i18n-title="look_intake_title">Intake</button>
+          <button class="btn" type="button" data-view="top" data-i18n="look_top">Top</button>
+          <button class="btn" type="button" data-view="rear" data-i18n="look_rear" data-i18n-title="look_rear_title">Rear</button>
+          <button class="btn" type="button" data-view="exhaust" data-i18n="look_exhaust" data-i18n-title="look_exhaust_title">Exhaust</button>
+          <button class="btn" type="button" data-view="bottom" data-i18n="look_bottom">Bottom</button>
+        </div>
+      </div>
+      <div class="vc-sec" id="runBox" hidden>
+        <h4 data-i18n="run_speed">Running speed</h4>
+        <div class="seg" id="runSeg">
+          <button type="button" data-v="slow" data-i18n="run_slow">Slow</button>
+          <button type="button" data-v="medium" data-i18n="run_medium">Medium</button>
+          <button type="button" data-v="fast" data-i18n="run_fast">Fast</button>
+        </div>
+      </div>
+      <div class="vc-tools">
+        <button class="btn" id="xrayBtn" type="button" aria-pressed="false" title="See through everything and click the part underneath (X)" data-i18n="xray" data-i18n-title="xray_title">X-ray</button>
+        <button class="btn" id="peelBtn" type="button" aria-pressed="false" title="Click a part to hide it and see what is behind it. Shift-click does the same." data-i18n="peel" data-i18n-title="peel_title">Peel mode</button>
+        <button class="btn" id="runBtn" type="button" aria-pressed="false" title="Run the engine in slow motion and watch the four strokes (G)" data-i18n="run_btn" data-i18n-title="run_title">Run engine</button>
+        <button class="btn" id="resetBtn" type="button" title="Re-frame the current zoom (R)" data-i18n="reset" data-i18n-title="reset_title">Reset view</button>
+        <button class="btn" id="unhideBtn" type="button" hidden>Show hidden</button>
+      </div>
+      <p class="hint narrow-only" data-i18n="view_hint_narrow">Zoom shows one system; the quiz carries on. Take apart opens the engine up. X-ray lets you tap a part through anything in front.</p>
+    </section>
+  </div>
+
+  <aside class="panel" id="panel" aria-label="Settings" data-i18n-aria="panel_aria">
+    <button class="btn close-sheet" id="closeSheet" type="button" data-i18n="done">Done</button>
+    <section id="langBox">
+      <h3><label for="langSel" data-i18n="lang_title">Language</label></h3>
+      <span class="lang-pick">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.7 2.6 15.3 0 18M12 3c-2.6 2.7-2.6 15.3 0 18"/></svg>
+        <select id="langSel"></select>
+      </span>
+      <p class="hint" id="langNote" style="margin-top:7px" hidden></p>
+    </section>
+    <section>
+      <h3 data-i18n="mode">Mode</h3>
+      <div class="seg" id="modeSeg">
+        <button type="button" data-v="study" data-i18n="mode_study">Study</button>
+        <button type="button" data-v="practice" data-i18n="mode_practice">Practice</button>
+        <button type="button" data-v="test" data-i18n="mode_test">Test</button>
+      </div>
+      <p class="hint" id="modeHint" style="margin-top:7px"></p>
+    </section>
+    <section id="quizBox" hidden>
+      <h3 data-i18n="quiz">Questions</h3>
+      <div class="seg" id="quizSeg">
+        <button type="button" data-v="find" data-i18n="quiz_find">Find it</button>
+        <button type="button" data-v="name" data-i18n="quiz_name">Name it</button>
+      </div>
+    </section>
+    <section>
+      <h3 data-i18n="bones">Parts</h3>
+      <div class="seg" id="setSeg">
+        <button type="button" data-v="names" data-i18n="set_names">Main</button>
+        <button type="button" data-v="all" data-i18n="set_all">All</button>
+      </div>
+      <p class="hint" id="setHint" style="margin-top:7px"></p>
+    </section>
+    <section>
+      <h3 data-i18n="hints">Hints</h3>
+      <div class="seg" id="hintSeg">
+        <button type="button" data-v="on" data-i18n="hints_on">Hints on</button>
+        <button type="button" data-v="off" data-i18n="hints_off">Hints off</button>
+      </div>
+      <p class="hint" style="margin-top:7px" id="hintHint"></p>
+    </section>
+    <section id="notesBox">
+      <div class="seg" id="notesSeg">
+        <button type="button" data-v="on" data-i18n="notes_on">Notes on</button>
+        <button type="button" data-v="off" data-i18n="notes_off">Notes off</button>
+      </div>
+    </section>
+    <section id="searchBox" hidden>
+      <h3 data-i18n="find_bone">Find a part</h3>
+      <input id="search" type="search" placeholder="e.g. piston, alternator, cam" data-i18n-ph="search_ph" autocomplete="off">
+      <ul class="results-list" id="searchList"></ul>
+    </section>
+    <section>
+      <div class="best" id="best"></div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn primary" id="restartBtn" type="button" data-i18n="restart">Restart</button>
+        <button class="btn" id="cleanBtn" type="button" data-i18n="clean">Clean view</button>
+      </div>
+      <p class="hint" id="keysHint" style="margin-top:8px"></p>
+    </section>
+    <p class="credit" id="credit" data-i18n-html="credit">
+      3D model: built in code for this tool, <a data-i18n-link="cc" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Made by @samplesize_1.
+    </p>
+  </aside>
+
+  <div class="dock">
+    <button class="btn" id="prevBtn" type="button" data-i18n="prev">← Previous</button>
+    <button class="btn" id="nextBtn" type="button" data-i18n="next">Next →</button>
+    <button class="btn" id="skipBtn" type="button">Show me</button>
+    <button class="btn" id="viewBtn" type="button" aria-controls="viewCard">View</button>
+    <button class="btn" id="settingsBtn" type="button" data-i18n="settings">Settings</button>
+    <button class="btn" id="cleanExit" type="button" data-i18n="exit_clean">Exit clean view</button>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<div class="overlay" id="confirm" hidden role="dialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMsg">
+  <div class="card">
+    <h2 id="confirmTitle" data-i18n="confirm_title">End this test?</h2>
+    <p id="confirmMsg"></p>
+    <div class="row confirm-actions">
+      <button class="btn danger" id="confirmYes" type="button" data-i18n="confirm_yes">End test</button>
+      <button class="btn primary" id="confirmNo" type="button" data-i18n="confirm_no">Keep going</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="loading">
+  <div class="card">
+    <h2>Engine Atlas</h2>
+    <p id="loadMsg" data-i18n-boot="loading">Loading the 3D engine…</p>
+    <progress id="loadBar" max="1" value="0"></progress>
+  </div>
+</div>
+
+<!-- Saved progress (scores, settings) for the tools on this site: stays in this browser -->
+<script src="progress.js"></script>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+} }
+</script>
+
+<script>
+/* The language (/js/language.js): a ?lang= link, then the one picked on this page before, then the one picked last
+   on the site, then the browser's, then English. Picked before the app runs, so the loading card is in it too. */
+SiteLanguage.start({
+  tool: 'engine-atlas',
+  langs: ['en'],
+  legacy: ['engineatlas.lang'],   // where the choice was saved before the site-wide helper
+  // start-up text, shown before the atlas's code runs ({err} is filled in)
+  boot: {"en": {"loading": "Loading the 3D engine…", "start_fail": "Engine Atlas couldn’t start ({err}). Try reloading. If it keeps happening in this browser only, an extension or privacy setting is probably blocking part of the page.", "engine_fail": "The 3D graphics code didn’t load. A content blocker, DNS filter or strict privacy setting may be blocking this page’s scripts.", "webgl_fail": "This browser has 3D graphics (WebGL) switched off or unavailable, so the model can’t be drawn. In Firefox, check that webgl.disabled is false in about:config and that hardware acceleration is on.", "model_fail": "The engine model didn’t load. Check your connection and reload the page.", "unknown": "unknown error"}},
+});
+</script>
+
+<script>
+/* Start-up watchdog (plain script, so it runs even if the 3D code is blocked): if anything stops the app
+   from starting, say what happened on the loading card instead of leaving it spinning. */
+(function () {
+  var boot = function (key, vars) { return window.SiteLanguage ? SiteLanguage.bootText(key, vars) : 'This page couldn’t start. Try reloading.'; };
+  function say(msg) {
+    var card = document.getElementById('loading'), m = document.getElementById('loadMsg');
+    if (!card || !m || window.__atlas || window.__atlasFatal) return;
+    card.hidden = false; m.textContent = msg;
+  }
+  function onErr(text) {
+    if (window.__atlas || /ResizeObserver/.test(text || '')) return;
+    say(boot('start_fail', { err: text || boot('unknown') }));
+  }
+  window.addEventListener('error', function (e) { onErr(e.message); });
+  window.addEventListener('unhandledrejection', function (e) { onErr(e.reason && (e.reason.message || String(e.reason))); });
+  setTimeout(function () {
+    if (!window.__atlasStarted) say(boot('engine_fail'));
+  }, 15000);
+})();
+</script>
+<script type="module">
+// Engine Atlas is the shared atlas engine (./atlas-engine/atlas.js) with this page's markup, the data in data.js,
+// the settings below, and its own code for taking the engine apart and running it (machine.js).
+// What each setting does is explained in atlas.js, where it is read.
+import DATA from './data.js';
+import { startAtlas } from './atlas-engine/atlas.js';
+import { machine } from './machine.js';
+
+// where each system is best looked at from (the names are in viewDirs, below)
+const LOOK = { bottom: 'low_i', top: 'top_i', air: 'intake', exhaust: 'exhaust', electrical: 'fi', lube: 'low_i', cooling: 're', belt: 'front' };
+
+await startAtlas({
+  id: 'engine-atlas',          // progress is saved in this browser under this name
+  savedAs: 'engineatlas.',    // (where it was saved before the site-wide helper, and still is when this page is opened on its own)
+  data: DATA,
+  model: 'engine.glb', modelBytes: 1759536,
+  extend: machine,
+
+  // An engine has no left and right, no floor to stand on, and metal that needs something to reflect
+  sides: false,
+  floor: false,
+  stage: { light: 0.75, near: 0.01, far: 60, maxDistance: 14, camera: [-1.2, 0.8, 2.0], target: [0, 0.12, 0], startInPlace: true },
+  layersHide: false,           // a part's `layer` in the data is how far the engine must be open to see it
+  pieceFade: { outOfView: 0.035, xray: 0.3 },
+  clickDepth: 0.004,
+  clickLumps: false,
+  reviewKeepsAngle: true,
+
+  // Where the camera looks from: the crankshaft runs along x, the intake side is +z, the exhaust side -z
+  viewDirs: {
+    fi: [-0.62, 0.34, 1], fe: [-0.62, 0.34, -1],   // front three-quarter, intake / exhaust side
+    ri: [0.62, 0.34, 1], re: [0.62, 0.34, -1],   // rear three-quarter
+    front: [-1, 0.14, 0.22], rear: [1, 0.14, 0.22],
+    intake: [-0.14, 0.14, 1], exhaust: [0.14, 0.14, -1],
+    top: [-0.12, 1, 0.3], bottom: [-0.12, -1, 0.3],
+    top_i: [-0.4, 0.85, 0.75], top_e: [-0.4, 0.85, -0.75],   // from above, towards one side
+    low_i: [-0.55, -0.42, 1], low_e: [-0.55, -0.42, -1],   // from below
+    run: [-0.3, 0.26, 1],   // watching the engine run: all four cylinders side by side
+  },
+  defaultView: 'fi',
+  // The zoom areas are the systems on the map
+  zooms: [{ key: 'all', sec: 'all' }, ...DATA.regions.map(r => ({ key: r.key, sec: r.key, dir: LOOK[r.key] }))],
+  zoomNames: 'regions',
+  viewFrom: { region: LOOK },
+
+  voiceAreas: {
+    all: ['whole engine', 'engine', 'everything', 'zoom out', 'reset view', 'all systems', 'the whole thing'],
+    bottom: ['bottom end', 'bottom', 'block', 'crankshaft', 'pistons', 'short block', 'rotating assembly'],
+    top: ['top end', 'top', 'cylinder head', 'head', 'valves', 'valve train', 'valvetrain', 'camshafts', 'timing', 'timing chain'],
+    air: ['air and fuel', 'air', 'fuel', 'intake', 'fuel system', 'intake system', 'induction'],
+    exhaust: ['exhaust', 'exhaust system'],
+    electrical: ['ignition', 'electrical', 'ignition and electrical', 'electrics', 'sensors', 'spark'],
+    lube: ['lubrication', 'oil', 'oil system', 'oiling', 'lube'],
+    cooling: ['cooling', 'cooling system', 'coolant', 'water'],
+    belt: ['belt drive', 'belt', 'belts', 'accessories', 'accessory drive', 'pulleys'],
+  },
+
+  // Practice and Test can ask for the name to be typed: the part solid, the rest of the engine a ghost around it
+  nameIt: { rest: 0.07, filler: ['the'] },
+
+  noteRows: ['does', 'where', 'fails'],
+  noteLabelPrefix: 'note_',
+});
+</script>
+
